@@ -135,60 +135,67 @@ Template.tabular.rendered = function () {
       table.ajax.reload(null, true);
     }
   });
+  
+  // *** if the collection is client-only, create a reference
+  var clientOnly = _.isNull(tabularTable.collection._name);
+  
+  // *** if it's client only, don't run the subs
+  if(!clientOnly){
 
-  // First Subscription
-  // Subscribe to an array of _ids that should be on the
-  // current page of the table, plus some aggregate
-  // numbers that DataTables needs in order to show the paging.
-  // The server will reactively keep this info accurate.
-  // It's not necessary to call stop
-  // on subscriptions that are within autorun computations.
-  template.autorun(function () {
-    if (!template.tabular.ready.get()) {
-      return;
-    }
-
-    Meteor.subscribe(
-      "tabular_getInfo",
-      template.tabular.tableName.get(),
-      template.tabular.pubSelector.get(),
-      template.tabular.sort.get(),
-      template.tabular.skip.get(),
-      template.tabular.limit.get()
-    );
-  });
-
-  // Second Subscription
-  // Reactively subscribe to the documents with _ids given to us. Limit the
-  // fields to only those we need to display. It's not necessary to call stop
-  // on subscriptions that are within autorun computations.
-  template.autorun(function () {
-    // tableInfo is reactive and causes a rerun whenever the
-    // list of docs that should currently be in the table changes.
-    // It does not cause reruns based on the documents themselves
-    // changing.
-    var tableName = template.tabular.tableName.get();
-    var tableInfo = Tabular.getRecord(tableName) || {};
-
-    template.tabular.recordsTotal = tableInfo.recordsTotal || 0;
-    template.tabular.recordsFiltered = tableInfo.recordsFiltered || 0;
-
-    // In some cases, there is no point in subscribing to nothing
-    if (_.isEmpty(tableInfo) ||
-        template.tabular.recordsTotal === 0 ||
-        template.tabular.recordsFiltered === 0) {
-      return;
-    }
-
-    //console.log("tableInfo", tableInfo);
-
-    template.tabular.tableDef.sub.subscribe(
-      template.tabular.docPub.get(),
-      tableName,
-      tableInfo.ids || [],
-      template.tabular.fields.get()
-    );
-  });
+    // First Subscription
+    // Subscribe to an array of _ids that should be on the
+    // current page of the table, plus some aggregate
+    // numbers that DataTables needs in order to show the paging.
+    // The server will reactively keep this info accurate.
+    // It's not necessary to call stop
+    // on subscriptions that are within autorun computations.
+    template.autorun(function () {
+      if (!template.tabular.ready.get()) {
+        return;
+      }
+  
+      Meteor.subscribe(
+        "tabular_getInfo",
+        template.tabular.tableName.get(),
+        template.tabular.pubSelector.get(),
+        template.tabular.sort.get(),
+        template.tabular.skip.get(),
+        template.tabular.limit.get()
+      );
+    });
+  
+    // Second Subscription
+    // Reactively subscribe to the documents with _ids given to us. Limit the
+    // fields to only those we need to display. It's not necessary to call stop
+    // on subscriptions that are within autorun computations.
+    template.autorun(function () {
+      // tableInfo is reactive and causes a rerun whenever the
+      // list of docs that should currently be in the table changes.
+      // It does not cause reruns based on the documents themselves
+      // changing.
+      var tableName = template.tabular.tableName.get();
+      var tableInfo = Tabular.getRecord(tableName) || {};
+  
+      template.tabular.recordsTotal = tableInfo.recordsTotal || 0;
+      template.tabular.recordsFiltered = tableInfo.recordsFiltered || 0;
+  
+      // In some cases, there is no point in subscribing to nothing
+      if (_.isEmpty(tableInfo) ||
+          template.tabular.recordsTotal === 0 ||
+          template.tabular.recordsFiltered === 0) {
+        return;
+      }
+  
+      //console.log("tableInfo", tableInfo);
+  
+      template.tabular.tableDef.sub.subscribe(
+        template.tabular.docPub.get(),
+        tableName,
+        tableInfo.ids || [],
+        template.tabular.fields.get()
+      );
+    });
+  }
 
   // Build the table. We rerun this only when the table
   // options specified by the user changes, which should be
@@ -239,8 +246,9 @@ Template.tabular.rendered = function () {
     // * Docs were added/changed/removed by this user or
     //   another user, causing visible result set to change.
     var tableInfo = Tabular.getRecord(tableName);
-
-    if (!collection || !tableInfo) {
+    
+    // *** tableInfo isn't created for client-only
+    if (!collection || (!clientOnly && !tableInfo)) {
       return;
     }
 
@@ -260,7 +268,10 @@ Template.tabular.rendered = function () {
     }
 
     // Get the updated list of docs we should be showing
-    var cursor = collection.find({_id: {$in: tableInfo.ids}}, findOptions);
+    // *** since tableInfo isn't created, display everything
+    var selector = clientOnly ? {} : {_id: {$in: tableInfo.ids}};
+    
+    var cursor = collection.find(selector, findOptions);
 
     // We're subscribing to the docs just in time, so there's
     // a good chance that they aren't all sent to the client yet.
